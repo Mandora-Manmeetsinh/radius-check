@@ -3,6 +3,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 // Allowed origins for CORS - restrict to your app domains
 const allowedOrigins = [
   'https://id-preview--cfde5cb8-6da1-43c5-9698-a1f1033040f4.lovable.app',
+  'https://cfde5cb8-6da1-43c5-9698-a1f1033040f4.lovableproject.com',
+  'https://radius-check.lovable.app',
   'http://localhost:5173',
   'http://localhost:3000',
 ]

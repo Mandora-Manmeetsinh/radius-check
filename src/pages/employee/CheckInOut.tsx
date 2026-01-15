@@ -52,6 +52,13 @@ export default function CheckInOut() {
     setActionLoading(true);
 
     try {
+      // Check session validity first
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !sessionData.session) {
+        toast.error('Session expired. Please log in again.');
+        return;
+      }
+
       const position = await getCurrentPosition();
       
       const { data, error } = await supabase.functions.invoke('process-attendance', {
@@ -63,6 +70,7 @@ export default function CheckInOut() {
       });
 
       if (error) {
+        console.error('Edge function error:', error);
         throw new Error(error.message || 'Failed to process attendance');
       }
 
@@ -75,6 +83,7 @@ export default function CheckInOut() {
         fetchTodayAttendance();
       }
     } catch (error: any) {
+      console.error('Attendance error:', error);
       toast.error(error.message || 'Failed to process attendance');
     } finally {
       setActionLoading(false);
