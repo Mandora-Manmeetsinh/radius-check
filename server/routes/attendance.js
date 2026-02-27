@@ -4,6 +4,7 @@ import Office from '../models/Office.js';
 import User from '../models/User.js';
 import ShiftConfig from '../models/ShiftConfig.js';
 import { protect } from '../middleware/authMiddleware.js';
+import { sendAttendanceAlert } from '../services/notificationService.js';
 
 const router = express.Router();
 
@@ -105,6 +106,19 @@ function calculateFinalStatus(isLate, isEarlyCheckoutFlag) {
     }
 }
 
+/**
+ * Determine initial status (Legacy fallback)
+ */
+function determineStatus(checkInTime, shiftStart, gracePeriod, isWithinRadius) {
+    if (!isWithinRadius) return 'absent';
+
+    const [hours, minutes] = shiftStart.split(':').map(Number);
+    const shiftStartTime = new Date(checkInTime.getFullYear(), checkInTime.getMonth(), checkInTime.getDate(), hours, minutes);
+    const lateThreshold = new Date(shiftStartTime.getTime() + (gracePeriod || 15) * 60000);
+
+    return checkInTime <= lateThreshold ? 'present' : 'late';
+}
+
 // @desc    Check In
 // @route   POST /api/attendance/check-in
 // @access  Private
@@ -119,17 +133,36 @@ router.post('/check-in', protect, async (req, res) => {
             return res.status(404).json({ message: 'Office configuration not found' });
         }
 
-        // 2. Validate Location
-        const distance = calculateDistance(latitude, longitude, office.latitude, office.longitude);
-        const bufferMeters = 20;
-        const isWithinRadius = distance <= (office.radius_meters + bufferMeters);
+        // Fetch User First
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
 
-        if (!isWithinRadius) {
-            return res.status(400).json({
-                error: 'You are outside the office geo-fence',
-                distance: Math.round(distance),
-                required_radius: office.radius_meters
-            });
+        // 2. Validate Location (Skipped if WFH)
+        let isWithinRadius = false;
+        let work_mode = req.body.work_mode || 'office';
+        let distance = 0;
+
+        // Check if user is allowed WFH
+        if (work_mode === 'wfh' && !user.wfh_enabled) {
+            return res.status(403).json({ message: 'You are not authorized for Work From Home.' });
+        }
+
+        if (work_mode === 'wfh') {
+            isWithinRadius = true; // Always allow WFH check-ins location-wise
+        } else {
+            distance = calculateDistance(latitude, longitude, office.latitude, office.longitude);
+            const bufferMeters = 20;
+            isWithinRadius = distance <= (office.radius_meters + bufferMeters);
+
+            if (!isWithinRadius) {
+                return res.status(400).json({
+                    error: 'You are outside the office geo-fence',
+                    distance: Math.round(distance),
+                    required_radius: office.radius_meters
+                });
+            }
         }
 
         // 3. Check if already checked in
@@ -140,8 +173,8 @@ router.post('/check-in', protect, async (req, res) => {
             return res.status(400).json({ message: 'Already checked in today' });
         }
 
-        // 4. Get user and shift config
-        const user = await User.findById(userId);
+        // 4. Get shift config
+        // const user = await User.findById(userId); // REMOVED DUPLICATE
 
         // NEW: Role-based shift validation
         let shiftConfig = null;
@@ -180,9 +213,10 @@ router.post('/check-in', protect, async (req, res) => {
             check_in: new Date(),
             check_in_lat: latitude,
             check_in_lng: longitude,
-            distance_at_check_in: Math.round(distance),
+            distance_at_check_in: work_mode === 'office' ? Math.round(calculateDistance(latitude, longitude, office.latitude, office.longitude)) : 0,
             status: status,
             is_late: isLate, // NEW field
+            work_mode: work_mode // [NEW] Track if WFH
         });
 
         res.status(201).json({
@@ -264,6 +298,14 @@ router.post('/check-out', protect, async (req, res) => {
             if (finalStatus === 'present') newStatus = 'present';
             else if (finalStatus === 'halfday') newStatus = 'halfday'; // Ensure 'halfday' is in enum
             else if (finalStatus === 'absent') newStatus = 'absent';
+
+            // Send notification for Early Exit or Late (if triggered during checkout)
+            if (isEarlyCheckoutFlag) {
+                await sendAttendanceAlert(user, 'EARLY_EXIT', {
+                    checkOutTime: checkOutTime.toLocaleTimeString(),
+                    shiftEnd: shiftConfig.shift_end
+                });
+            }
 
         } else {
             // Legacy: Determine Early Exit for users without shift config

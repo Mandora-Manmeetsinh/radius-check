@@ -15,6 +15,10 @@ const userSchema = new mongoose.Schema({
         type: String,
         required: true,
     },
+    phone_number: {
+        type: String,
+        default: '',
+    },
     role: {
         type: String,
         enum: ['admin', 'employee', 'intern'],
@@ -55,6 +59,10 @@ const userSchema = new mongoose.Schema({
         late_alerts: { type: Boolean, default: true },
         early_exit_alerts: { type: Boolean, default: true },
         daily_summary: { type: Boolean, default: false },
+    },
+    wfh_enabled: {
+        type: Boolean,
+        default: false,
     },
     // NEW: First-login password change requirement
     // When true, user must change password before accessing the system

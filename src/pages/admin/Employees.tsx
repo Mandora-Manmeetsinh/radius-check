@@ -28,7 +28,6 @@ import { format } from 'date-fns';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { AnimatedBackground } from '@/components/AnimatedBackground';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -54,12 +53,14 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
+import '@/styles/Employees.css';
 
 interface Employee {
   _id: string;
   full_name: string;
   email: string;
   role: string;
+  phone_number: string;
   batch?: string | null;
   shift_start: string;
   shift_end: string;
@@ -67,7 +68,6 @@ interface Employee {
   must_change_password?: boolean;
 }
 
-// NEW: Interface for create user response
 interface CreateUserResponse {
   success: boolean;
   message: string;
@@ -82,15 +82,15 @@ export default function AdminEmployees() {
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
-  // NEW: States for create user dialog
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newUserName, setNewUserName] = useState('');
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserRole, setNewUserRole] = useState<'employee' | 'intern'>('employee');
   const [newUserBatch, setNewUserBatch] = useState<'batch1' | 'batch2'>('batch1');
+  const [newUserWfhEnabled, setNewUserWfhEnabled] = useState(false);
+  const [newUserPhone, setNewUserPhone] = useState('');
 
-  // NEW: State for showing temp password after creation
   const [createdUser, setCreatedUser] = useState<CreateUserResponse | null>(null);
   const [passwordCopied, setPasswordCopied] = useState(false);
 
@@ -109,7 +109,6 @@ export default function AdminEmployees() {
     fetchEmployees();
   }, []);
 
-  // NEW: Handle create user
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -125,14 +124,12 @@ export default function AdminEmployees() {
         email: newUserEmail,
         role: newUserRole,
         batch: newUserRole === 'intern' ? newUserBatch : null,
+        wfh_enabled: newUserWfhEnabled,
+        phone_number: newUserPhone,
       });
 
-      // Show the temp password to admin
       setCreatedUser(data);
-
-      // Refresh employee list
       fetchEmployees();
-
       toast.success('User created successfully!');
     } catch (error: any) {
       console.error('Error creating user:', error);
@@ -142,7 +139,6 @@ export default function AdminEmployees() {
     }
   };
 
-  // NEW: Reset form and close dialog
   const handleCloseDialog = () => {
     setCreateDialogOpen(false);
     setCreatedUser(null);
@@ -150,10 +146,10 @@ export default function AdminEmployees() {
     setNewUserEmail('');
     setNewUserRole('employee');
     setNewUserBatch('batch1');
+    setNewUserPhone('');
     setPasswordCopied(false);
   };
 
-  // NEW: Copy password to clipboard
   const copyPassword = async () => {
     if (createdUser?.temporary_password) {
       await navigator.clipboard.writeText(createdUser.temporary_password);
@@ -163,7 +159,6 @@ export default function AdminEmployees() {
     }
   };
 
-  // NEW: Handle password reset
   const handleResetPassword = async (userId: string) => {
     try {
       const { data } = await client.post(`/admin/users/${userId}/reset-password`);
@@ -176,7 +171,6 @@ export default function AdminEmployees() {
     }
   };
 
-  // NEW: Handle delete user
   const handleDeleteUser = async (userId: string, userName: string) => {
     if (!confirm(`Are you sure you want to delete ${userName}? This action cannot be undone.`)) {
       return;
@@ -202,29 +196,22 @@ export default function AdminEmployees() {
 
   return (
     <Layout>
-      <div className="relative z-0">
-        <AnimatedBackground />
-      </div>
-
-      <div className="space-y-8 relative z-10">
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 animate-slide-up">
+      <div className="employees-container">
+        <div className="employees-header">
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-foreground">Team Management</h1>
             <p className="text-muted-foreground mt-1 text-lg">Manage your workforce and roles</p>
           </div>
           <div className="flex items-center gap-3">
-            {/* NEW: Create User Dialog */}
             <Dialog open={createDialogOpen} onOpenChange={(open) => open ? setCreateDialogOpen(true) : handleCloseDialog()}>
               <DialogTrigger asChild>
-                <Button className="gap-2 shadow-glow-accent hover:scale-105 transition-transform">
+                <Button className="gap-2">
                   <UserPlus className="w-4 h-4" />
                   Add Employee
                 </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-md">
                 {!createdUser ? (
-                  // CREATE USER FORM
                   <>
                     <DialogHeader>
                       <DialogTitle className="flex items-center gap-2">
@@ -261,6 +248,17 @@ export default function AdminEmployees() {
                       </div>
 
                       <div className="space-y-2">
+                        <Label htmlFor="phone">Phone Number (WhatsApp/SMS)</Label>
+                        <Input
+                          id="phone"
+                          type="tel"
+                          placeholder="+91 9876543210"
+                          value={newUserPhone}
+                          onChange={(e) => setNewUserPhone(e.target.value)}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
                         <Label htmlFor="role">Role *</Label>
                         <Select value={newUserRole} onValueChange={(v: 'employee' | 'intern') => setNewUserRole(v)}>
                           <SelectTrigger>
@@ -283,9 +281,8 @@ export default function AdminEmployees() {
                         </Select>
                       </div>
 
-                      {/* Show batch selector only for interns */}
                       {newUserRole === 'intern' && (
-                        <div className="space-y-2 animate-slide-up">
+                        <div className="space-y-2">
                           <Label htmlFor="batch">Batch *</Label>
                           <Select value={newUserBatch} onValueChange={(v: 'batch1' | 'batch2') => setNewUserBatch(v)}>
                             <SelectTrigger>
@@ -309,6 +306,27 @@ export default function AdminEmployees() {
                         </div>
                       )}
 
+                      <div className="flex items-center space-x-2 border p-3 rounded-md bg-muted/20">
+                        <input
+                          type="checkbox"
+                          id="wfh"
+                          className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                          checked={newUserWfhEnabled}
+                          onChange={(e) => setNewUserWfhEnabled(e.target.checked)}
+                        />
+                        <div className="grid gap-1.5 leading-none">
+                          <label
+                            htmlFor="wfh"
+                            className="text-sm font-medium leading-none cursor-pointer"
+                          >
+                            Enable Work From Home
+                          </label>
+                          <p className="text-xs text-muted-foreground">
+                            Allow this user to check in from remote locations.
+                          </p>
+                        </div>
+                      </div>
+
                       <DialogFooter className="pt-4">
                         <Button type="button" variant="outline" onClick={handleCloseDialog}>
                           Cancel
@@ -330,7 +348,6 @@ export default function AdminEmployees() {
                     </form>
                   </>
                 ) : (
-                  // SHOW TEMP PASSWORD AFTER CREATION
                   <>
                     <DialogHeader>
                       <DialogTitle className="flex items-center gap-2 text-success">
@@ -343,7 +360,6 @@ export default function AdminEmployees() {
                     </DialogHeader>
 
                     <div className="space-y-4 py-4">
-                      {/* User details */}
                       <div className="p-4 rounded-lg bg-muted/50 space-y-2">
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">Name:</span>
@@ -352,6 +368,10 @@ export default function AdminEmployees() {
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">Email:</span>
                           <span className="font-medium">{createdUser.user.email}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Phone:</span>
+                          <span className="font-medium">{createdUser.user.phone_number || 'N/A'}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">Role:</span>
@@ -365,7 +385,6 @@ export default function AdminEmployees() {
                         )}
                       </div>
 
-                      {/* IMPORTANT: Temporary password */}
                       <div className="p-4 rounded-lg bg-warning/10 border border-warning/30 space-y-2">
                         <div className="flex items-center gap-2 text-warning font-medium">
                           <Key className="w-4 h-4" />
@@ -408,23 +427,22 @@ export default function AdminEmployees() {
           </div>
         </div>
 
-        {/* Controls */}
-        <div className="flex flex-col md:flex-row gap-4 animate-slide-up" style={{ animationDelay: '0.1s' }}>
-          <div className="relative flex-1">
+        <div className="employees-filter-bar">
+          <div className="search-input-wrapper">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
             <Input
               placeholder="Search employees by name or email..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 h-12 text-base bg-card/50 backdrop-blur-sm border-border/50 focus:ring-primary/20"
+              className="pl-10 h-12 text-base"
             />
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" className="gap-2 h-12 border-border/50 bg-card/50">
+            <Button variant="outline" className="gap-2 h-12">
               <Filter className="w-4 h-4" />
               Filter
             </Button>
-            <div className="bg-card/50 border border-border/50 rounded-lg p-1 flex items-center h-12">
+            <div className="border rounded-lg p-1 flex items-center h-12 bg-card">
               <Button
                 variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
                 size="sm"
@@ -445,13 +463,12 @@ export default function AdminEmployees() {
           </div>
         </div>
 
-        {/* Content */}
         {loading ? (
           <div className="flex items-center justify-center py-20 min-h-[50vh]">
             <Loader2 className="w-10 h-10 animate-spin text-primary" />
           </div>
         ) : filteredEmployees.length === 0 ? (
-          <div className="text-center py-20 bg-card/30 rounded-3xl border border-border/50 backdrop-blur-sm animate-scale-in">
+          <div className="text-center py-20 border rounded-3xl bg-muted/10">
             <div className="w-20 h-20 rounded-full bg-muted/30 flex items-center justify-center mx-auto mb-6">
               <UserCircle className="w-10 h-10 text-muted-foreground" />
             </div>
@@ -463,97 +480,98 @@ export default function AdminEmployees() {
         ) : (
           <>
             {viewMode === 'grid' ? (
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 animate-scale-in">
+              <div className="employees-grid">
                 {filteredEmployees.map((emp) => (
-                  <Card key={emp._id} className="group hover:shadow-medium transition-all duration-300 border-border/50 overflow-hidden">
-                    <CardHeader className="flex flex-row items-start justify-between pb-2">
-                      <div className="flex items-center gap-3">
-                        <Avatar className="w-12 h-12 border-2 border-background shadow-sm group-hover:scale-110 transition-transform duration-300">
-                          <AvatarFallback className="bg-gradient-to-br from-primary to-indigo-600 text-white font-bold">
-                            {getInitials(emp.full_name)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <CardTitle className="text-base font-bold">{emp.full_name}</CardTitle>
-                          <div className="flex gap-1 mt-1">
-                            <Badge variant={emp.role === 'admin' ? 'default' : 'secondary'} className="text-xs">
-                              {emp.role}
+                  <Card key={emp._id} className="employee-card relative group p-6">
+                    <div className="flex items-center gap-4 mb-4">
+                      <Avatar className="employee-avatar-large">
+                        <AvatarFallback>
+                          {getInitials(emp.full_name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-lg truncate">{emp.full_name}</p>
+                        <div className="flex gap-1 mt-1">
+                          <Badge variant={emp.role === 'admin' ? 'default' : 'secondary'} className="text-xs">
+                            {emp.role}
+                          </Badge>
+                          {emp.batch && (
+                            <Badge variant="outline" className="text-xs">
+                              {emp.batch}
                             </Badge>
-                            {emp.batch && (
-                              <Badge variant="outline" className="text-xs">
-                                {emp.batch}
-                              </Badge>
-                            )}
-                          </div>
+                          )}
                         </div>
                       </div>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <MoreVertical className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => handleResetPassword(emp._id)}>
-                            <Key className="w-4 h-4 mr-2" />
-                            Reset Password
-                          </DropdownMenuItem>
-                          <DropdownMenuItem>View Profile</DropdownMenuItem>
-                          <DropdownMenuItem>Edit Details</DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            className="text-destructive focus:text-destructive"
-                            onClick={() => handleDeleteUser(emp._id, emp.full_name)}
-                            disabled={emp.role === 'admin'}
-                          >
-                            Delete User
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </CardHeader>
-                    <CardContent className="space-y-4 pt-2">
-                      <div className="space-y-2 text-sm">
-                        <div className="flex items-center gap-2 text-muted-foreground">
-                          <Mail className="w-4 h-4" />
-                          <span className="truncate">{emp.email}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-muted-foreground">
-                          <Clock className="w-4 h-4" />
-                          <span>
-                            {format(new Date(`2000-01-01 ${emp.shift_start}`), 'h:mm a')} - {format(new Date(`2000-01-01 ${emp.shift_end}`), 'h:mm a')}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 text-muted-foreground">
-                          <Calendar className="w-4 h-4" />
-                          <span>Joined {format(new Date(emp.createdAt), 'MMM d, yyyy')}</span>
-                        </div>
+                      <div className="card-dropdown">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <MoreVertical className="w-4 h-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => handleResetPassword(emp._id)}>
+                              <Key className="w-4 h-4 mr-2" />
+                              Reset Password
+                            </DropdownMenuItem>
+                            <DropdownMenuItem>View Profile</DropdownMenuItem>
+                            <DropdownMenuItem>Edit Details</DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              onClick={() => handleDeleteUser(emp._id, emp.full_name)}
+                              disabled={emp.role === 'admin'}
+                            >
+                              Delete User
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 text-sm">
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Mail className="w-4 h-4" />
+                        <span className="truncate">{emp.email}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Shield className="w-4 h-4" />
+                        <span>{emp.phone_number || 'No phone'}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Clock className="w-4 h-4" />
+                        <span>
+                          {format(new Date(`2000-01-01 ${emp.shift_start}`), 'h:mm a')} - {format(new Date(`2000-01-01 ${emp.shift_end}`), 'h:mm a')}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Calendar className="w-4 h-4" />
+                        <span>Joined {format(new Date(emp.createdAt), 'MMM d, yyyy')}</span>
                       </div>
                       {emp.must_change_password && (
-                        <Badge variant="outline" className="text-warning border-warning/50 bg-warning/5 w-full justify-center">
-                          Pending First Login
-                        </Badge>
+                        <div className="pt-2">
+                          <Badge variant="outline" className="text-warning border-warning/50 bg-warning/5 w-full justify-center">
+                            Pending First Login
+                          </Badge>
+                        </div>
                       )}
-                      <div className="pt-2 flex gap-2">
-                        <Button variant="outline" className="flex-1 h-9 text-xs">View History</Button>
-                        <Button variant="secondary" className="flex-1 h-9 text-xs">Edit</Button>
-                      </div>
-                    </CardContent>
+                    </div>
                   </Card>
                 ))}
               </div>
             ) : (
-              <Card className="shadow-soft border-border/50 overflow-hidden animate-slide-up">
-                <div className="rounded-xl overflow-hidden">
+              <Card className="records-card">
+                <div className="overflow-hidden">
                   <Table>
                     <TableHeader>
-                      <TableRow className="bg-muted/50 hover:bg-muted/50">
-                        <TableHead className="font-semibold pl-6">Employee</TableHead>
-                        <TableHead className="font-semibold">Role</TableHead>
-                        <TableHead className="font-semibold">Shift</TableHead>
-                        <TableHead className="font-semibold">Status</TableHead>
-                        <TableHead className="font-semibold">Joined</TableHead>
+                      <TableRow className="bg-muted/50">
+                        <TableHead className="pl-6">Employee</TableHead>
+                        <TableHead>Role</TableHead>
+                        <TableHead>Shift</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Joined</TableHead>
                         <TableHead className="w-[50px]"></TableHead>
                       </TableRow>
                     </TableHeader>
@@ -563,7 +581,7 @@ export default function AdminEmployees() {
                           <TableCell className="pl-6">
                             <div className="flex items-center gap-3">
                               <Avatar className="w-9 h-9 border border-border">
-                                <AvatarFallback className="bg-gradient-to-br from-primary to-indigo-600 text-white text-xs font-bold">
+                                <AvatarFallback className="avatar-initials">
                                   {getInitials(emp.full_name)}
                                 </AvatarFallback>
                               </Avatar>

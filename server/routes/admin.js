@@ -1,6 +1,7 @@
 import express from 'express';
 import User from '../models/User.js';
 import Attendance from '../models/Attendance.js';
+import SystemSettings from '../models/SystemSettings.js';
 import ExcelJS from 'exceljs';
 import { protect, admin } from '../middleware/authMiddleware.js';
 
@@ -67,6 +68,102 @@ router.get('/dashboard/weekly', protect, admin, async (req, res) => {
     }
 });
 
+// @desc    Get Top Performers (Based on streak & attendance)
+// @route   GET /api/admin/dashboard/top-performers
+// @access  Private/Admin
+router.get('/dashboard/top-performers', protect, admin, async (req, res) => {
+    try {
+        // Fetch top 3 users by current streak
+        const topUsers = await User.find({ role: { $ne: 'admin' } })
+            .sort({ current_streak: -1 })
+            .limit(3)
+            .select('full_name current_streak total_attendance');
+
+        const formatted = topUsers.map(user => ({
+            id: user._id,
+            name: user.full_name,
+            streak: user.current_streak || 0,
+            attendance: user.total_attendance || 0,
+            // Calculate a simple "score" for the progress bar (e.g. valid days this month vs total days)
+            // For now, just normalizing streak to a % (assuming max streak 30 for visual)
+            score: Math.min(100, Math.round(((user.current_streak || 0) / 30) * 100))
+        }));
+
+        res.json(formatted);
+    } catch (error) {
+        console.error('Error fetching top performers:', error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+});
+
+// @desc    Get Recent Activity (Live Feed)
+// @route   GET /api/admin/dashboard/activity
+// @access  Private/Admin
+router.get('/dashboard/activity', protect, admin, async (req, res) => {
+    try {
+        // Get last 10 attendance actions (checked in today)
+        const today = new Date().toISOString().split('T')[0];
+        const recentAttendance = await Attendance.find({ date: today })
+            .sort({ updatedAt: -1 })
+            .limit(5)
+            .populate('user', 'full_name email');
+
+        // Transform to activity feed format
+        const activity = recentAttendance.map(record => ({
+            id: record._id,
+            user: record.user,
+            status: record.check_out ? 'checked_out' : 'checked_in',
+            time: record.check_out || record.check_in,
+            check_in: record.check_in,
+            check_out: record.check_out
+        }));
+
+        res.json(activity);
+    } catch (error) {
+        console.error('Error fetching activity:', error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+});
+
+// @desc    Get Global Settings (Generic)
+// @route   GET /api/admin/settings/:key
+// @access  Private/Admin
+router.get('/settings/:key', protect, admin, async (req, res) => {
+    try {
+        const settings = await SystemSettings.findOne({ key: req.params.key });
+        // Return defaults if not found, or empty object
+        res.json(settings ? settings.value : {});
+    } catch (error) {
+        console.error('Error fetching settings:', error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+});
+
+// @desc    Update Global Settings
+// @route   POST /api/admin/settings/:key
+// @access  Private/Admin
+router.post('/settings/:key', protect, admin, async (req, res) => {
+    try {
+        const { key } = req.params;
+        const value = req.body;
+
+        const settings = await SystemSettings.findOneAndUpdate(
+            { key },
+            {
+                key,
+                value,
+                updatedBy: req.user._id
+            },
+            { new: true, upsert: true } // Create if not exists
+        );
+
+        res.json(settings.value);
+    } catch (error) {
+        console.error('Error updating settings:', error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+});
+
 // @desc    Get All Employees
 // @route   GET /api/admin/employees
 // @access  Private/Admin
@@ -119,7 +216,7 @@ function getShiftForRole(role, batch) {
 // @route   POST /api/admin/users
 // @access  Private/Admin
 router.post('/users', protect, admin, async (req, res) => {
-    const { full_name, email, role, batch } = req.body;
+    const { full_name, email, role, batch, phone_number } = req.body;
 
     try {
         // Validate required fields
@@ -162,6 +259,8 @@ router.post('/users', protect, admin, async (req, res) => {
             batch: role === 'intern' ? batch : null,
             shift_start,
             shift_end,
+            phone_number: phone_number || '',
+            wfh_enabled: req.body.wfh_enabled || false, // [NEW]
             must_change_password: true,
             temp_password_created_at: new Date(),
         });
@@ -170,6 +269,8 @@ router.post('/users', protect, admin, async (req, res) => {
         res.status(201).json({
             success: true,
             message: 'User created successfully',
+            temporary_password: tempPassword,
+            instructions: 'Share this temporary password with the user. They will be required to change it on first login.',
             user: {
                 _id: user._id,
                 full_name: user.full_name,
@@ -178,10 +279,8 @@ router.post('/users', protect, admin, async (req, res) => {
                 batch: user.batch,
                 shift_start: user.shift_start,
                 shift_end: user.shift_end,
+                phone_number: user.phone_number,
             },
-            // IMPORTANT: Show temp password to admin ONCE - they must share it with user
-            temporary_password: tempPassword,
-            instructions: 'Share this temporary password with the user. They will be required to change it on first login.',
         });
     } catch (error) {
         console.error('Error creating user:', error);
@@ -224,6 +323,14 @@ router.put('/users/:id', protect, admin, async (req, res) => {
             user.shift_end = shift_end;
         }
 
+        if (req.body.wfh_enabled !== undefined) {
+            user.wfh_enabled = req.body.wfh_enabled;
+        }
+
+        if (req.body.phone_number !== undefined) {
+            user.phone_number = req.body.phone_number;
+        }
+
         await user.save();
 
         res.json({
@@ -237,6 +344,7 @@ router.put('/users/:id', protect, admin, async (req, res) => {
                 batch: user.batch,
                 shift_start: user.shift_start,
                 shift_end: user.shift_end,
+                phone_number: user.phone_number,
             },
         });
     } catch (error) {
