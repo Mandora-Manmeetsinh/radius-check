@@ -8,13 +8,15 @@ import officeRoutes from './routes/office.js';
 import adminRoutes from './routes/admin.js';
 import notificationRoutes from './routes/notifications.js';
 import achievementRoutes from './routes/achievements.js';
+import { initTelegramBot } from './services/telegramBot.js';
+import { initBotScheduler } from './services/botScheduler.js';
 import shiftRoutes from './routes/shifts.js';
-import { initScheduler } from './services/scheduler.js';
 
 dotenv.config();
 
 connectDB().then(() => {
-    initScheduler();
+    initTelegramBot();
+    initBotScheduler();
 });
 
 const app = express();

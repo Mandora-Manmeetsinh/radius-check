@@ -17,20 +17,25 @@ const generateToken = (id) => {
 router.post('/login', async (req, res) => {
     const { email, password } = req.body;
 
-    const user = await User.findOne({ email });
+    try {
+        const user = await User.findOne({ email });
 
-    if (user && (await user.matchPassword(password))) {
-        res.json({
-            _id: user._id,
-            full_name: user.full_name,
-            email: user.email,
-            role: user.role,
-            batch: user.batch,
-            must_change_password: user.must_change_password, // NEW: First-login flag
-            token: generateToken(user._id),
-        });
-    } else {
-        res.status(401).json({ message: 'Invalid email or password' });
+        if (user && (await user.matchPassword(password))) {
+            res.json({
+                _id: user._id,
+                full_name: user.full_name,
+                email: user.email,
+                role: user.role,
+                batch: user.batch,
+                must_change_password: user.must_change_password,
+                token: generateToken(user._id),
+            });
+        } else {
+            res.status(401).json({ message: 'Invalid email or password' });
+        }
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Server Error' });
     }
 });
 
