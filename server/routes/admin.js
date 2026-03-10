@@ -24,7 +24,7 @@ router.get('/dashboard/stats', protect, admin, async (req, res) => {
             total: totalEmployees,
             present,
             late,
-            absent: absent < 0 ? 0 : absent, // Safety check
+            absent: absent < 0 ? 0 : absent,
             earlyExit
         });
     } catch (error) {
@@ -48,7 +48,7 @@ router.get('/dashboard/weekly', protect, admin, async (req, res) => {
                 day: dayName,
                 present: attendance.filter(a => a.status === 'present').length,
                 late: attendance.filter(a => a.status === 'late' || a.status === 'early_exit').length,
-                absent: 0 // Calculating absent for past days is complex without shift schedules, leaving as 0 or TODO
+                absent: 0
             });
         }
         res.json(weeklyData);
@@ -126,7 +126,7 @@ router.post('/settings/:key', protect, admin, async (req, res) => {
                 value,
                 updatedBy: req.user._id
             },
-            { new: true, upsert: true } // Create if not exists
+            { new: true, upsert: true }
         );
 
         res.json(settings.value);

@@ -4,10 +4,10 @@ const systemSettingsSchema = mongoose.Schema({
     key: {
         type: String,
         required: true,
-        unique: true, // e.g., 'notifications', 'general'
+        unique: true,
     },
     value: {
-        type: mongoose.Schema.Types.Mixed, // Allows flexible structure (JSON object)
+        type: mongoose.Schema.Types.Mixed,
         required: true,
     },
     updatedBy: {

@@ -7,11 +7,9 @@ import { sendCheckInReminder, sendBreakEndingReminder, sendCheckOutReminder } fr
 const initScheduler = () => {
     console.log('Initializing Attendance Schedulers...');
 
-    // 1️⃣ Check-in Reminder (5 minutes before 10:30 AM shift start) - Sent at 10:25 AM
     cron.schedule('25 10 * * *', async () => {
         console.log('Running 10:25 AM Check-in Reminders...');
         try {
-            // Interns Batch 1 and Employees start at 10:30 AM
             const users = await User.find({
                 role: { $in: ['employee', 'intern'] },
                 $or: [
@@ -28,7 +26,6 @@ const initScheduler = () => {
         }
     });
 
-    // 2️⃣ Automatic Break Pause for Full-Time Employees at 2:00 PM
     cron.schedule('0 14 * * *', async () => {
         console.log('Running 2:00 PM Automatic Break Pause...');
         try {
@@ -57,7 +54,6 @@ const initScheduler = () => {
         }
     });
 
-    // 3️⃣ Break Ending Reminder at 2:45 PM
     cron.schedule('45 14 * * *', async () => {
         console.log('Running 2:45 PM Break Ending Reminders...');
         try {
@@ -70,15 +66,11 @@ const initScheduler = () => {
         }
     });
 
-    // 4️⃣ Forgot Check-out Reminders
-    // We run every 5 minutes and check for users whose shifts have ended recently
     cron.schedule('*/5 * * * *', async () => {
         console.log('Running Check-out Reminder Check...');
         try {
             const now = new Date();
             const today = new Date().toISOString().split('T')[0];
-
-            // Get all shift configs to know end times
             const shiftConfigs = await ShiftConfig.find({});
 
             for (const config of shiftConfigs) {

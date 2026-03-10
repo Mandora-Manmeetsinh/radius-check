@@ -8,7 +8,7 @@ import { sendCheckInConfirmation, sendCheckOutConfirmation } from '../services/e
 
 const router = express.Router();
 function calculateDistance(lat1, lon1, lat2, lon2) {
-    const R = 6371000; // Earth's radius in meters
+    const R = 6371000;
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
     const a =
@@ -19,7 +19,6 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
     return R * c;
 }
 
-// Helper: Parse time string (HH:MM or HH:MM:SS) to Date object for today
 function parseTimeToday(timeStr) {
     const now = new Date();
     const parts = timeStr.split(':').map(Number);
@@ -118,9 +117,6 @@ router.post('/check-in', protect, async (req, res) => {
             }
         }
 
-
-
-        // Use local date string instead of UTC-based toISOString
         const now = new Date();
         const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
         const existing = await Attendance.findOne({ user: userId, date: today });
@@ -148,7 +144,6 @@ router.post('/check-in', protect, async (req, res) => {
 
                 isLate = isLateCheckIn(new Date(), shiftConfig);
 
-                // Use the existing 'now' variable for start of month
                 const startOfMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
 
                 if (work_mode === 'wfh') {
@@ -246,7 +241,6 @@ router.post('/check-out', protect, async (req, res) => {
         const workedMs = checkOutTime - checkInTime;
         let workedMinutes = Math.floor(workedMs / 60000);
 
-        // Subtract break time
         if (attendance.break_minutes > 0) {
             workedMinutes -= attendance.break_minutes;
         }
@@ -283,8 +277,6 @@ router.post('/check-out', protect, async (req, res) => {
         attendance.final_status = finalStatus;
 
         await attendance.save();
-
-        // Send confirmation email
         sendCheckOutConfirmation(user, checkOutTime);
 
         const workedHours = Math.floor(workedMinutes / 60);
@@ -311,7 +303,6 @@ router.post('/check-out', protect, async (req, res) => {
 });
 
 router.post('/resume-break', protect, async (req, res) => {
-    // Route to allow full-time employees to manually resume work timer after 2:45 PM
     try {
         const today = new Date().toISOString().split('T')[0];
         const attendance = await Attendance.findOne({ user: req.user._id, date: today });
@@ -329,7 +320,7 @@ router.post('/resume-break', protect, async (req, res) => {
         }
 
         const now = new Date();
-        const [resumeH, resumeM] = [14, 45]; // 2:45 PM
+        const [resumeH, resumeM] = [14, 45];
         const resumeTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), resumeH, resumeM);
 
         if (now < resumeTime) {
@@ -366,8 +357,6 @@ router.get('/today', protect, async (req, res) => {
         const now = new Date();
         const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
         const attendance = await Attendance.findOne({ user: req.user._id, date: today });
-
-        // Calculate WFH count for current month
         const startOfMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
 
         const wfh_count = await Attendance.countDocuments({

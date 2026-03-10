@@ -12,7 +12,7 @@ const attendanceSchema = new mongoose.Schema({
         ref: 'Office',
     },
     date: {
-        type: String, // YYYY-MM-DD
+        type: String,
         required: true,
     },
     check_in: {
@@ -39,7 +39,6 @@ const attendanceSchema = new mongoose.Schema({
     distance_at_check_out: {
         type: Number,
     },
-    // LEGACY: Simple status (kept for backward compatibility)
     status: {
         type: String,
         enum: ['present', 'late', 'early_exit', 'absent', 'incomplete', 'halfday'],
@@ -54,12 +53,10 @@ const attendanceSchema = new mongoose.Schema({
         enum: ['office', 'wfh'],
         default: 'office',
     },
-    // NEW: Track total worked time in minutes
     worked_minutes: {
         type: Number,
         default: 0,
     },
-    // NEW: Detailed status tracking
     is_late: {
         type: Boolean,
         default: false,
@@ -68,13 +65,11 @@ const attendanceSchema = new mongoose.Schema({
         type: Boolean,
         default: false,
     },
-    // NEW: Final calculated status (Present, HalfDay, Absent)
     final_status: {
         type: String,
         enum: ['present', 'halfday', 'absent', null],
         default: null,
     },
-    // NEW: Break tracking
     break_start: {
         type: Date,
     },
@@ -93,9 +88,7 @@ const attendanceSchema = new mongoose.Schema({
     timestamps: true,
 });
 
-// Ensure one record per user per day
 attendanceSchema.index({ user: 1, date: 1 }, { unique: true });
-
 const Attendance = mongoose.model('Attendance', attendanceSchema);
 
 export default Attendance;
