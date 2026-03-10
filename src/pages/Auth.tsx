@@ -5,10 +5,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { MapPin, Loader2, Mail, Lock, ArrowRight, Shield, CheckCircle2 } from 'lucide-react';
+import { MapPin, Loader2, Mail, Lock, ArrowRight, Shield, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import '@/styles/Auth.css';
+import logo from '@/assets/logo.png';
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -19,7 +20,7 @@ export default function Auth() {
   const [isLoading, setIsLoading] = useState(false);
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
-
+  const [showPassword, setShowPassword] = useState(false);
   const { signIn, user, isAdmin, loading } = useAuth();
   const navigate = useNavigate();
 
@@ -67,7 +68,7 @@ export default function Auth() {
       <div className="auth-container">
         <div className="auth-branding">
           <div className="logo-section">
-            <img src="src/logo.png" alt="Exotic Infotech" className="h-12 w-auto" />
+            <img src={logo} alt="Exotic Infotech" className="h-12 w-auto" />
             <div>
               <h1 className="text-2xl font-bold">Exotic Infotech</h1>
               <p className="text-sm text-muted-foreground">Attendance Management System</p>
@@ -101,7 +102,7 @@ export default function Auth() {
         <div className="flex items-center justify-center">
           <div className="w-full">
             <div className="text-center mb-8 lg:hidden">
-              <img src="/logo.png" alt="Exotic Infotech" className="h-10 w-auto" />
+              <img src={logo} alt="Exotic Infotech" className="h-10 w-auto" />
               <h1 className="text-2xl font-bold">Attendance System</h1>
             </div>
 
@@ -133,13 +134,22 @@ export default function Auth() {
                       <Lock className="auth-input-icon w-4 h-4" />
                       <Input
                         id="password"
-                        type="password"
+                        type={showPassword ? 'text' : 'password'}
                         placeholder="••••••••"
                         value={loginPassword}
                         onChange={(e) => setLoginPassword(e.target.value)}
                         className="pl-10"
                         required
                       />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="password-toggle"
+                        onClick={() => setShowPassword(!showPassword)}
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </Button>
                     </div>
                   </div>
                   <Button type="submit" className="auth-submit-btn" disabled={isLoading}>

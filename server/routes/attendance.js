@@ -4,6 +4,7 @@ import Office from '../models/Office.js';
 import User from '../models/User.js';
 import ShiftConfig from '../models/ShiftConfig.js';
 import { protect } from '../middleware/authMiddleware.js';
+import { sendCheckInConfirmation, sendCheckOutConfirmation } from '../services/emailService.js';
 
 const router = express.Router();
 function calculateDistance(lat1, lon1, lat2, lon2) {
@@ -117,7 +118,11 @@ router.post('/check-in', protect, async (req, res) => {
             }
         }
 
-        const today = new Date().toISOString().split('T')[0];
+
+
+        // Use local date string instead of UTC-based toISOString
+        const now = new Date();
+        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
         const existing = await Attendance.findOne({ user: userId, date: today });
 
         if (existing && existing.check_in) {
@@ -142,6 +147,33 @@ router.post('/check-in', protect, async (req, res) => {
                 }
 
                 isLate = isLateCheckIn(new Date(), shiftConfig);
+
+                // Use the existing 'now' variable for start of month
+                const startOfMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+
+                if (work_mode === 'wfh') {
+                    const wfhCount = await Attendance.countDocuments({
+                        user: userId,
+                        work_mode: 'wfh',
+                        date: { $gte: startOfMonthStr }
+                    });
+
+                    if (wfhCount >= 2) {
+                        return res.status(403).json({ message: 'Work From Home limit reached for this month.' });
+                    }
+                }
+
+                if (isLate) {
+                    const lateCount = await Attendance.countDocuments({
+                        user: userId,
+                        is_late: true,
+                        date: { $gte: startOfMonthStr }
+                    });
+
+                    if (lateCount >= 2) {
+                        req.is_policy_violation = true;
+                    }
+                }
             }
         }
 
@@ -155,9 +187,13 @@ router.post('/check-in', protect, async (req, res) => {
             check_in_lng: longitude,
             distance_at_check_in: work_mode === 'office' ? Math.round(calculateDistance(latitude, longitude, office.latitude, office.longitude)) : 0,
             status: status,
-            is_late: isLate, // NEW field
-            work_mode: work_mode // [NEW] Track if WFH
+            is_late: isLate,
+            is_policy_violation: req.is_policy_violation || false,
+            work_mode: work_mode
         });
+
+        sendCheckInConfirmation(user, new Date());
+
 
         res.status(201).json({
             success: true,
@@ -183,7 +219,8 @@ router.post('/check-out', protect, async (req, res) => {
     const userId = req.user._id;
 
     try {
-        const today = new Date().toISOString().split('T')[0];
+        const now = new Date();
+        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
         const attendance = await Attendance.findOne({ user: userId, date: today });
 
         if (!attendance) {
@@ -207,7 +244,12 @@ router.post('/check-out', protect, async (req, res) => {
         const checkOutTime = new Date();
         const checkInTime = new Date(attendance.check_in);
         const workedMs = checkOutTime - checkInTime;
-        const workedMinutes = Math.floor(workedMs / 60000);
+        let workedMinutes = Math.floor(workedMs / 60000);
+
+        // Subtract break time
+        if (attendance.break_minutes > 0) {
+            workedMinutes -= attendance.break_minutes;
+        }
 
         let newStatus = attendance.status;
         let isEarlyCheckoutFlag = false;
@@ -241,6 +283,10 @@ router.post('/check-out', protect, async (req, res) => {
         attendance.final_status = finalStatus;
 
         await attendance.save();
+
+        // Send confirmation email
+        sendCheckOutConfirmation(user, checkOutTime);
+
         const workedHours = Math.floor(workedMinutes / 60);
         const workedMins = workedMinutes % 60;
 
@@ -264,10 +310,81 @@ router.post('/check-out', protect, async (req, res) => {
     }
 });
 
+router.post('/resume-break', protect, async (req, res) => {
+    // Route to allow full-time employees to manually resume work timer after 2:45 PM
+    try {
+        const today = new Date().toISOString().split('T')[0];
+        const attendance = await Attendance.findOne({ user: req.user._id, date: today });
+
+        if (!attendance) {
+            return res.status(404).json({ message: 'No attendance record found for today' });
+        }
+
+        if (req.user.role !== 'employee') {
+            return res.status(403).json({ message: 'Only full-time employees have mandatory breaks' });
+        }
+
+        if (!attendance.is_on_break) {
+            return res.status(400).json({ message: 'Employee is not on break' });
+        }
+
+        const now = new Date();
+        const [resumeH, resumeM] = [14, 45]; // 2:45 PM
+        const resumeTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), resumeH, resumeM);
+
+        if (now < resumeTime) {
+            return res.status(400).json({
+                message: 'Break period is still active. Please resume after 2:45 PM.',
+                currentTime: now.toLocaleTimeString(),
+                resumeTime: resumeTime.toLocaleTimeString()
+            });
+        }
+
+        const breakStartTime = new Date(attendance.break_start);
+        const breakMinutes = Math.floor((now - breakStartTime) / 60000);
+
+        attendance.break_end = now;
+        attendance.break_minutes = breakMinutes;
+        attendance.is_on_break = false;
+
+        await attendance.save();
+
+        res.json({
+            success: true,
+            message: 'Break ended. Working timer resumed.',
+            break_duration: breakMinutes,
+            record: attendance
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+});
+
 router.get('/today', protect, async (req, res) => {
-    const today = new Date().toISOString().split('T')[0];
-    const attendance = await Attendance.findOne({ user: req.user._id, date: today });
-    res.json(attendance || null);
+    try {
+        const now = new Date();
+        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const attendance = await Attendance.findOne({ user: req.user._id, date: today });
+
+        // Calculate WFH count for current month
+        const startOfMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+
+        const wfh_count = await Attendance.countDocuments({
+            user: req.user._id,
+            work_mode: 'wfh',
+            date: { $gte: startOfMonthStr }
+        });
+
+        res.json({
+            record: attendance || null,
+            wfh_count,
+            wfh_limit: 2
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Server Error' });
+    }
 });
 
 router.get('/history', protect, async (req, res) => {
