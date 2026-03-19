@@ -16,6 +16,7 @@ import AdminAttendance from "./pages/admin/Attendance";
 import AdminSettings from "./pages/admin/Settings";
 import NotFound from "./pages/NotFound";
 import { Loader2 } from "lucide-react";
+import { Analytics } from "@vercel/analytics/react";
 
 const queryClient = new QueryClient();
 
@@ -72,6 +73,7 @@ const App = () => (
           <AppRoutes />
         </AuthProvider>
       </BrowserRouter>
+      <Analytics />
     </TooltipProvider>
   </QueryClientProvider>
 );
